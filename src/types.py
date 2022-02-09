@@ -54,6 +54,12 @@ class error(JsonDeserializable):
         self.Error = error
         self.time = self.headerTimeToDatetime(headers["Date"] or None)
 
+class success(BaseObject):
+
+    def __init__(self, headers:dict = None):
+        self.Success = True
+        self.time = JsonDeserializable.headerTimeToDatetime(headers["Date"] or None)
+
 class CCYRatio(BaseObject):
 
     def __init__(self, dictionary = None, codes = None, rateBuy = None, rateSell = None, time = None, rateCross = None) -> None:
@@ -65,15 +71,15 @@ class CCYRatio(BaseObject):
             except:
                 rateCross = rateBuy = rateSell = dictionary["rateCross"]
             time = dictionary["date"]
-        self.codeA:int = codes[0]
-        self.codeB:int = codes[1]
+        self.CodeA:int = codes[0]
+        self.CodeB:int = codes[1]
         self.A:str = util.isoNumToName(codes[0])
         self.B:str = util.isoNumToName(codes[1])
         self._dictName = f"{self.A}:{self.B}"
-        self.rateBuy:float = rateBuy
-        self.rateSell:float = rateSell
-        self.rateCross:float = rateCross
-        self.time = datetime.datetime.fromtimestamp(time)
+        self.RateBuy:float = rateBuy
+        self.RateSell:float = rateSell
+        self.RateCross:float = rateCross
+        self.Time = datetime.datetime.fromtimestamp(time)
 
 class MonoCCYs(JsonDeserializable):
 
@@ -94,7 +100,7 @@ class MonoCCYs(JsonDeserializable):
         self._rawObj = obj
 
         self.CCYDict = self.__processCCYs()
-        self.time = self.headerTimeToDatetime(headers["Date"] or None)
+        self.Time = self.headerTimeToDatetime(headers["Date"] or None)
 
 class MonoAccount(BaseObject):
 
@@ -149,4 +155,23 @@ class MonoPersonalData(JsonDeserializable):
         self._rawObj = obj
 
         self.Accounts = self.__processAccounts()
-        self.time = self.headerTimeToDatetime(headers["Date"] or None)
+        self.Time = self.headerTimeToDatetime(headers["Date"] or None)
+
+class MonoStatements(JsonDeserializable):
+
+    @classmethod
+    def de_json(cls, json_string, req:requests.Response):
+        if json_string is None: return None
+        obj = cls.check_json(json_string, False)
+        return cls(obj, req.headers)
+    
+    def __processStatements(self):
+
+        #raise NotImplementedError("Yet to be implemented")
+        return None
+
+    def __init__(self, obj, headers:dict = None) -> None:
+        self._rawObj = obj
+
+        self.Statements = self.__processStatements()
+        self.Time = self.headerTimeToDatetime(headers["Date"] or None)
