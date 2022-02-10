@@ -11,7 +11,8 @@ class BaseObject(object):
 
     def __str__(self) -> str:
         iterItems = self.__dict__.copy()
-        iterItems.pop('_rawObj')
+        try:iterItems.pop('_rawObj')
+        except:None
         iterItems = iterItems.items()
         #Stop showing _rawObj in console
 
@@ -157,6 +158,39 @@ class MonoPersonalData(JsonDeserializable):
         self.Accounts = self.__processAccounts()
         self.Time = self.headerTimeToDatetime(headers["Date"] or None)
 
+class MonoStatement(BaseObject):
+
+    def __init__(self, statement:dict = None, id_:str = None, time:int = None, desc:str = None, mcc:int = None, mcc_:int = None, amount:int = None, op_amount:int = None, ccy_code:int = None, commission:int = None, cashback:int = None, balance:int = None, hold:bool = None) -> None:
+
+        if statement is not None:
+            id_ = statement["id"]
+            time = statement["time"]
+            desc = statement["description"]
+            mcc = statement["mcc"]
+            mcc_ = statement["originalMcc"]
+            amount = statement["amount"]
+            op_amount = statement["operationAmount"]
+            ccy_code = statement["currencyCode"]
+            commission = statement["commissionRate"]
+            cashback = statement["cashbackAmount"]
+            balance = statement["balance"]
+            hold = statement["hold"]
+
+        self.StatementID = id_
+        self.Time = datetime.datetime.fromtimestamp(time)
+        self.Description = desc
+        self.MCC = mcc
+        self.MCCOriginal = mcc_
+        self.Amount = amount/100
+        self.OperationAmount = op_amount/100
+        self.CCYCode = ccy_code
+        self.CCYName = util.isoNumToName(ccy_code)
+        self.Commission = commission
+        self.Cashback = cashback
+        self.Balance = balance
+        self.OnHold = hold
+        self._dictName = f"{time}:{id_}"
+
 class MonoStatements(JsonDeserializable):
 
     @classmethod
@@ -167,8 +201,11 @@ class MonoStatements(JsonDeserializable):
     
     def __processStatements(self):
 
-        #raise NotImplementedError("Yet to be implemented")
-        return None
+        ret = {}
+        for x in self._rawObj:
+            statement = MonoStatement(x)
+            ret[statement._dictName] = statement
+        return ret
 
     def __init__(self, obj, headers:dict = None) -> None:
         self._rawObj = obj

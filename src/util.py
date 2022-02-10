@@ -35,3 +35,25 @@ def is_URL_Valid(val):
 def to_JSON(data):
 
     return json.dumps(data)
+
+def find_in(obj, find:str, searchDesc:bool = False):
+
+    if hasattr(obj, "Statements"):
+        ret = []
+        if not searchDesc:
+            for x in obj.Statements.items():
+                if x[0].find(find) >= 0:
+                    ret.append(x[1])
+        else:
+            for x in obj.Statements.items():
+                if x[0].find(find) >=0 or x[1].Description.find(find) >= 0:
+                    ret.append(x[1])
+    elif hasattr(obj, "Accounts"):
+        ret = []
+        for x in obj.Accounts.items():
+            if x[0].find(find) >= 0:
+                ret.append(x[1])
+    else:
+        raise TypeError("obj is not MonoPersonalData or MonoStatements")
+    return ret
+        
