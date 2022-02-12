@@ -1,12 +1,23 @@
 import datetime
 import src.types, src.util
-import requests
+import requests, threading, pickle
 
 class MonoClient:
 
-    def __init__(self, api_key: str, ) -> None:
+    def __init__(self, api_key: str) -> None:
         self.XToken = api_key
         self.Endpoint = "https://api.monobank.ua/"
+        self.__stop_polling = threading.Event()
+        self.Personal:src.types.MonoPersonalData = None
+        self.PreferedAccount:src.types.MonoAccount = None
+        self._last_update_time:dict[datetime.datetime] = {}
+        self._callback:function = None
+        self._processed_statements:list[src.types.MonoStatement] = []
+        try:
+            self._processed_statements = pickle.load(open("processed.obj", "rb"))
+        except:
+            print("No processed statements found")
+            None
     
     def makeRequest(self, path, args:dict=None):
         if path == "bank/currency":
@@ -40,7 +51,11 @@ class MonoClient:
         return self.makeRequest("bank/currency")
     
     def getPersonal(self):
-        return self.makeRequest("personal/client-info")
+        personal = self.makeRequest("personal/client-info")
+        self.Personal = personal
+        try: self.PreferedAccount = src.util.find_in(personal, "UAH:black")[0]
+        except: None
+        return personal
 
     def setWebhook(self, webhookLink:str):
 
@@ -84,3 +99,62 @@ class MonoClient:
             args["to"] = int(timeTo.timestamp())
 
         return self.makeRequest("personal/statement", args)
+
+    def new_statement(self, statement, account):
+        self._callback(statement, account)
+
+    def process_statements(self, updates:dict, acc):
+        for x in updates.keys():
+            if x in self._processed_statements:
+                continue
+            self.new_statement(updates[x], acc)
+            self._processed_statements.append(x)
+        pickle.dump(self._processed_statements, open("processed.obj", "wb"))
+
+    def process_new_updates(self, updates, acc):
+
+        if isinstance(updates, src.types.error):
+            raise RuntimeError(f"Error: {updates}")
+        elif isinstance(updates, src.types.MonoStatements):
+            self.process_statements(updates.Statements, acc)
+        else:
+            raise TypeError("Update is not MonoStatements, somehow")
+
+    def __retrieve_updates(self, acc_to_update:src.types.MonoAccount = None):
+        try:
+            last_update = self._last_update_time[acc_to_update._dictName]
+        except:
+            last_update = datetime.datetime.now() - datetime.timedelta(hours=1)
+        self._last_update_time[acc_to_update._dictName] = datetime.datetime.now()
+        updates = self.getStatements(acc_to_update, last_update)
+        self.process_new_updates(updates, acc_to_update)
+
+    def polling(self, interval:int = 300, accounts_to_check:list[src.types.MonoAccount] = None, callback = print):
+
+        """Period is time in seconds to wait between each request"""
+        self.__stop_polling.clear()
+        error_interval = 0.25
+        pooling_thread = src.types.WorkerThread("Mono_PoolingThread")
+        or_event = src.types.OrEvent(
+            pooling_thread.done_event,
+            pooling_thread.exception_event,
+            pooling_thread.exception_event
+        )
+        self._callback = callback
+        if accounts_to_check is None and self.PreferedAccount is not None: accounts_to_check = [self.PreferedAccount]
+        elif accounts_to_check is None and self.PreferedAccount == None:
+            self.getPersonal()
+            if self.PreferedAccount is not None:
+                accounts_to_check = [self.PreferedAccount]
+            else:
+                raise RuntimeError("Could not aqquire PreferedAccount")
+        while True:
+            for acc in accounts_to_check:
+                while not self.__stop_polling.wait(interval):
+                    or_event.clear()
+                    try:
+                        pooling_thread.put(self.__retrieve_updates, acc[0])
+                        break
+                    except Exception as E:
+                        print(E)
+                        raise E

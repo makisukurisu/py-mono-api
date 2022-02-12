@@ -1,3 +1,4 @@
+import threading
 from src import util
 
 try:
@@ -5,7 +6,7 @@ try:
 except:
     import json
 
-import requests, datetime
+import requests, datetime, queue as Queue
 
 class BaseObject(object):
 
@@ -181,13 +182,14 @@ class MonoStatement(BaseObject):
         self.Description = desc
         self.MCC = mcc
         self.MCCOriginal = mcc_
-        self.Amount = amount/100
+        self.Amount:float = amount/100
+        self.SignedAmount = f"+{self.Amount}" if self.Amount >0 else f"-{self.Amount.__abs__()}"
         self.OperationAmount = op_amount/100
         self.CCYCode = ccy_code
         self.CCYName = util.isoNumToName(ccy_code)
         self.Commission = commission
         self.Cashback = cashback
-        self.Balance = balance
+        self.Balance = balance/100
         self.OnHold = hold
         self._dictName = f"{time}:{id_}"
 
@@ -212,3 +214,97 @@ class MonoStatements(JsonDeserializable):
 
         self.Statements = self.__processStatements()
         self.Time = self.headerTimeToDatetime(headers["Date"] or None)
+
+def or_set(self):
+    self._set()
+    self.changed()
+
+
+def or_clear(self):
+    self._clear()
+    self.changed()
+
+def orify(e, changed_callback):
+    if not hasattr(e, "_set"):
+        e._set = e.set
+    if not hasattr(e, "_clear"):
+        e._clear = e.clear
+    e.changed = changed_callback
+    e.set = lambda: or_set(e)
+    e.clear = lambda: or_clear(e)
+
+def OrEvent(*events):
+    or_event = threading.Event()
+
+    def changed():
+        bools = [ev.is_set() for ev in events]
+        if any(bools):
+            or_event.set()
+        else:
+            or_event.clear()
+
+    def busy_wait():
+        while not or_event.is_set():
+            # noinspection PyProtectedMember
+            or_event._wait(3)
+
+    for e in events:
+        orify(e, changed)
+    or_event._wait = or_event.wait
+    or_event.wait = busy_wait
+    changed()
+    return or_event
+
+class WorkerThread(threading.Thread):
+    count = 0
+
+    def __init__(self, name = None):
+        name = name or f"Mono_WorkerThread{self.__class__.count+1}"
+        self.__class__.count+=1
+        threading.Thread.__init__(self, name=name)
+        self.queue = Queue.Queue()
+        self.daemon = True
+        self._running = True
+        self.received_task_event = threading.Event()
+        self.done_event = threading.Event()
+        self.exception_event = threading.Event()
+        self.continue_event = threading.Event()
+
+        self.exception_info = None
+        self.start()
+    
+    def run(self):
+        while self._running:
+            try:
+                task, args, kwargs = self.queue.get(True, 0.5)
+                self.continue_event.clear()
+                self.received_task_event.clear()
+                self.done_event.clear()
+                self.exception_event.clear()
+                self.received_task_event.set()
+
+                task(*args, **kwargs)
+                self.done_event.set()
+            except Queue.Empty:
+                pass
+            except Exception as E:
+                self.exception_info = E
+                self.exception_event.set()
+                self.continue_event.wait()
+    
+    def put(self, task, *args, **kwargs):
+        self.queue.put((task, args, kwargs))
+    
+    def raise_exception(self):
+        if self.exception_event.is_set():
+            raise self.exception_info
+    
+    def clear_exception(self):
+        self.exception_event.clear()
+        self.continue_event.set()
+    
+    def stop(self):
+        self._running = False
+
+
+
