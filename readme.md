@@ -1,5 +1,5 @@
-#PyMono
-###PyMono is a Python wrapper for Monobank (Universal Bank) API
+# PyMono
+### PyMono is a Python wrapper for Monobank (Universal Bank) API
 ------------------------------------------------------------
 
 ###TODO:
