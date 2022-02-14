@@ -1,5 +1,5 @@
 import datetime
-import src.types, src.util
+import pymono.types, pymono.util
 import requests, threading, pickle
 
 class MonoClient:
@@ -8,11 +8,11 @@ class MonoClient:
         self.XToken = api_key
         self.Endpoint = "https://api.monobank.ua/"
         self.__stop_polling = threading.Event()
-        self.Personal:src.types.MonoPersonalData = None
-        self.PreferedAccount:src.types.MonoAccount = None
+        self.Personal:pymono.types.MonoPersonalData = None
+        self.PreferedAccount:pymono.types.MonoAccount = None
         self._last_update_time:dict[datetime.datetime] = {}
         self._callback:function = None
-        self._processed_statements:list[src.types.MonoStatement] = []
+        self._processed_statements:list[pymono.types.MonoStatement] = []
         try:
             self._processed_statements = pickle.load(open("processed.obj", "rb"))
         except:
@@ -23,29 +23,29 @@ class MonoClient:
         if path == "bank/currency":
             req = requests.get(self.Endpoint + path)
             if req.status_code == 200:
-                return src.types.MonoCCYs.de_json(req.json(), req)
+                return pymono.types.MonoCCYs.de_json(req.json(), req)
             else:
-                return src.types.error.de_json(req.json(), req)
+                return pymono.types.error.de_json(req.json(), req)
         elif path == "personal/client-info":
             req = requests.get(self.Endpoint + path, headers={"X-Token": self.XToken})
             if req.status_code == 200:
-                return src.types.MonoPersonalData.de_json(req.json(), req)
-            else: return src.types.error.de_json(req.json(), req)
+                return pymono.types.MonoPersonalData.de_json(req.json(), req)
+            else: return pymono.types.error.de_json(req.json(), req)
         elif path == "personal/webhook":
-            req = requests.post(self.Endpoint + path, src.util.to_JSON(args), headers={"X-Token": self.XToken})
+            req = requests.post(self.Endpoint + path, pymono.util.to_JSON(args), headers={"X-Token": self.XToken})
             if req.status_code == 200:
-                return src.types.success(req.headers)
+                return pymono.types.success(req.headers)
             else:
-                return src.types.error.de_json(req.json(), req)
+                return pymono.types.error.de_json(req.json(), req)
         elif path == "personal/statement":
             path += f"/{args['account']}/{args['from']}"
             if 'to' in args.keys():
                 path += f"/{args['to']}"
             req = requests.get(self.Endpoint + path, headers={"X-Token": self.XToken})
             if req.status_code == 200:
-                return src.types.MonoStatements.de_json(req.json(), req)
+                return pymono.types.MonoStatements.de_json(req.json(), req)
             else:
-                return src.types.error.de_json(req.json(), req)
+                return pymono.types.error.de_json(req.json(), req)
 
     def getCurrency(self):
         return self.makeRequest("bank/currency")
@@ -53,7 +53,7 @@ class MonoClient:
     def getPersonal(self):
         personal = self.makeRequest("personal/client-info")
         self.Personal = personal
-        try: self.PreferedAccount = src.util.find_in(personal, "UAH:black")[0]
+        try: self.PreferedAccount = pymono.util.find_in(personal, "UAH:black")[0]
         except: None
         return personal
 
@@ -62,14 +62,14 @@ class MonoClient:
         if not isinstance(webhookLink, str):
             raise TypeError(f"webhookLink should be str, not {type(webhookLink)}")
 
-        if src.util.is_URL_Valid(webhookLink):
+        if pymono.util.is_URL_Valid(webhookLink):
             return self.makeRequest("personal/webhook", {"webHookUrl": webhookLink})
         else:
             raise ValueError(f"Incorrect URL for webhook webhookLink='{webhookLink}'")
     
-    def getStatements(self, account:src.types.MonoAccount|str|int|None, timeFrom:datetime.datetime, timeTo:datetime.datetime = None):
+    def getStatements(self, account:pymono.types.MonoAccount|str|int|None, timeFrom:datetime.datetime, timeTo:datetime.datetime = None):
         
-        if isinstance(account, src.types.MonoAccount):
+        if isinstance(account, pymono.types.MonoAccount):
             account = account.AccountID
         elif isinstance(account, str):
             None
@@ -113,14 +113,14 @@ class MonoClient:
 
     def process_new_updates(self, updates, acc):
 
-        if isinstance(updates, src.types.error):
+        if isinstance(updates, pymono.types.error):
             raise RuntimeError(f"Error: {updates}")
-        elif isinstance(updates, src.types.MonoStatements):
+        elif isinstance(updates, pymono.types.MonoStatements):
             self.process_statements(updates.Statements, acc)
         else:
             raise TypeError("Update is not MonoStatements, somehow")
 
-    def __retrieve_updates(self, acc_to_update:src.types.MonoAccount = None):
+    def __retrieve_updates(self, acc_to_update:pymono.types.MonoAccount = None):
         try:
             last_update = self._last_update_time[acc_to_update._dictName]
         except:
@@ -129,13 +129,13 @@ class MonoClient:
         updates = self.getStatements(acc_to_update, last_update)
         self.process_new_updates(updates, acc_to_update)
 
-    def polling(self, interval:int = 300, accounts_to_check:list[src.types.MonoAccount] = None, callback = print):
+    def polling(self, interval:int = 300, accounts_to_check:list[pymono.types.MonoAccount] = None, callback = print):
 
         """Period is time in seconds to wait between each request"""
         self.__stop_polling.clear()
         error_interval = 0.25
-        pooling_thread = src.types.WorkerThread("Mono_PoolingThread")
-        or_event = src.types.OrEvent(
+        pooling_thread = pymono.types.WorkerThread("Mono_PoolingThread")
+        or_event = pymono.types.OrEvent(
             pooling_thread.done_event,
             pooling_thread.exception_event,
             pooling_thread.exception_event

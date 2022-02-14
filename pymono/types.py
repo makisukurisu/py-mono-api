@@ -1,5 +1,5 @@
 import threading
-from src import util
+from pymono import util
 
 try:
     import ujson as json
